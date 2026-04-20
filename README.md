@@ -16,9 +16,9 @@ When multiple switches match the same child, the most specific one (most tokens)
 
 ## Requirements
 
-- Wwise 2022.1+ with WAAPI enabled
+- Wwise 2025.x with WAAPI enabled
 - Python 3.11 at `C:\Python311\python.exe`
-- [`sk-wwise-mcp`](https://github.com/sokolkreshnik/sk-wwise-mcp) installed at `~/sk-wwise-mcp`
+- [`sk-wwise-mcp`](https://github.com/sokolkreshnik/sk-wwise-mcp) installed at `~/sk-wwise-mcp` (requires Wwise 2025.x)
 
 ## Setup
 
@@ -77,9 +77,9 @@ Switch 이름과 자식 오브젝트 이름을 각각 `_`로 분리해 토큰화
 
 ### 요구 사항
 
-- Wwise 2022.1 이상 (WAAPI 활성화 필요)
+- Wwise 2025.x (WAAPI 활성화 필요)
 - Python 3.11 (`C:\Python311\python.exe`)
-- [`sk-wwise-mcp`](https://github.com/sokolkreshnik/sk-wwise-mcp) (`~/sk-wwise-mcp` 경로에 설치)
+- [`sk-wwise-mcp`](https://github.com/sokolkreshnik/sk-wwise-mcp) (`~/sk-wwise-mcp` 경로에 설치, Wwise 2025.x 전용)
 
 ### 설치 방법
 
