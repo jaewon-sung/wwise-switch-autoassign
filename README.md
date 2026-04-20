@@ -39,10 +39,15 @@ In Wwise: **Edit → Keyboard Shortcuts** → search `AutoAssign` → assign you
 
 ## Usage
 
-1. Select a Switch Container in Wwise
+1. Select one or more Switch Containers in Wwise
 2. Press your assigned shortcut (or invoke the command from Keyboard Shortcuts)
-3. Review the assignment preview in the dialog
-4. Click **Yes** to apply
+3. Review the combined assignment preview in the dialog
+4. Click **Yes** to apply all at once
+
+**Multiple selection is fully supported:**
+- Switch Containers sharing the same Switch Group → each matched against the same switch list
+- Switch Containers using different Switch Groups → each matched against its own switch list
+- Non-Switch Container objects in the selection are automatically skipped
 
 ## Files
 
@@ -100,10 +105,15 @@ Wwise: **Edit → Keyboard Shortcuts** → `AutoAssign` 검색 → 원하는 단
 
 ### 사용 방법
 
-1. Wwise에서 Switch Container 선택
+1. Wwise에서 Switch Container를 하나 또는 여러 개 선택
 2. 지정한 단축키 입력
-3. Assignment 미리보기 다이얼로그 확인
-4. **Yes** 클릭하여 적용
+3. 전체 컨테이너 매칭 결과를 한 번에 미리보기로 확인
+4. **Yes** 클릭하여 일괄 적용
+
+**다중 선택 지원:**
+- 같은 Switch Group을 사용하는 여러 컨테이너 → 각각 같은 Switch 목록으로 매칭
+- 다른 Switch Group을 사용하는 여러 컨테이너 → 각자 자기 Switch Group 기준으로 매칭
+- Switch Container가 아닌 오브젝트가 섞여 있으면 자동으로 스킵
 
 ### 파일 설명
 
