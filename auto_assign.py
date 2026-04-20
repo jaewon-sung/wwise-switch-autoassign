@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 WwiseSwitchAutoAssign — auto_assign.py
-Called by Wwise right-click command:
+Called by Wwise command (via keyboard shortcut):
   python auto_assign.py {objects}
 
-{objects} is replaced by Wwise with the GUID of the right-clicked Switch Container.
+{objects} is replaced by Wwise with space-separated GUIDs of selected objects.
+Supports multiple Switch Containers in a single run.
 """
 
 import sys
@@ -14,7 +15,7 @@ import tkinter as tk
 from tkinter import messagebox
 from pathlib import Path
 
-# ── WAAPI loader (same pattern as WwiseSnap / WwiseTagExplorer) ──────────────
+# ── WAAPI loader ──────────────────────────────────────────────────────────────
 _SK_WWISE_MCP = Path.home() / "sk-wwise-mcp"
 _WAAPI_UTIL_PATH = _SK_WWISE_MCP / "core" / "waapi_util.py"
 
@@ -72,10 +73,6 @@ def _best_switch_for_child(child_name: str, switches: list) -> tuple | None:
     """
     Returns (switch_guid, switch_name) for the best-matching switch,
     or None if no match or ambiguous match with equal token count.
-
-    Matching rule: the switch's tokens must all appear in the child's tokens.
-    e.g. switch="a", child="name_a_SFX" → {"a"} ⊆ {"name","a","sfx"} → match
-         switch="Walk_Fast", child="SFX_Walk_Fast_Loop" → {"walk","fast"} ⊆ {...} → match
     Best match = switch with the most tokens (most specific).
     """
     child_tokens = _tokens(child_name)
@@ -101,8 +98,68 @@ def _best_switch_for_child(child_name: str, switches: list) -> tuple | None:
     return (best["id"], best["name"]) if best else None
 
 
+def _process_container(call_fn, guid: str) -> dict | None:
+    """
+    Resolves Switch Group, computes matches for one Switch Container.
+    Returns a plan dict, or None if the container should be skipped (with reason logged).
+    """
+    obj_result = call_fn("ak.wwise.core.object.get", {
+        "from": {"id": [guid]},
+        "options": {"return": ["id", "name", "type", "@SwitchGroupOrStateGroup"]},
+    })
+    if not obj_result or not obj_result.get("return"):
+        return {"error": f"[{guid}] Could not fetch object info"}
+
+    obj = obj_result["return"][0]
+    obj_name = obj.get("name", "?")
+    obj_type = obj.get("type", "")
+
+    if obj_type != "SwitchContainer":
+        return {"error": f'"{obj_name}" is a {obj_type}, not a Switch Container — skipped'}
+
+    sg_ref = obj.get("@SwitchGroupOrStateGroup") or {}
+    if not sg_ref.get("id"):
+        return {"error": f'"{obj_name}" has no Switch Group assigned — skipped'}
+
+    sg_id   = sg_ref["id"]
+    sg_name = sg_ref.get("name", "?")
+
+    switches = _get_children(call_fn, sg_id)
+    if not switches:
+        return {"error": f'"{obj_name}": Switch Group "{sg_name}" has no switches — skipped'}
+
+    children = _get_children(call_fn, guid)
+    if not children:
+        return {"error": f'"{obj_name}" has no child objects — skipped'}
+
+    assignments = []
+    skipped     = []
+
+    for child in children:
+        match = _best_switch_for_child(child["name"], switches)
+        if match:
+            assignments.append((child, match))
+        else:
+            child_tokens = _tokens(child["name"])
+            matching_names = [sw["name"] for sw in switches
+                              if _tokens(sw["name"]).issubset(child_tokens)]
+            reason = (f"ambiguous ({', '.join(matching_names)})"
+                      if len(matching_names) > 1 else "no match")
+            skipped.append((child["name"], reason))
+
+    return {
+        "guid":        guid,
+        "name":        obj_name,
+        "sg_name":     sg_name,
+        "switches":    switches,
+        "children":    children,
+        "assignments": assignments,
+        "skipped":     skipped,
+    }
+
+
 def main():
-    # ── Parse GUID from command-line args ────────────────────────────────────
+    # ── Parse GUIDs from command-line args ────────────────────────────────────
     raw = " ".join(sys.argv[1:])
     guids = GUID_RE.findall(raw)
 
@@ -113,150 +170,111 @@ def main():
         _alert("WAAPI Error", f"Could not connect to Wwise:\n{e}", "error")
         return
 
-    # Fallback: if Wwise didn't pass a GUID, try the current selection
+    # Fallback: get current selection from Wwise
     if not guids:
         sel = call("ak.wwise.ui.getSelectedObjects",
                    {"options": {"return": ["id", "type"]}})
         if sel and sel.get("objects"):
-            obj = sel["objects"][0]
-            if obj.get("type") == "SwitchContainer":
-                guids = [obj["id"]]
+            guids = [o["id"] for o in sel["objects"]
+                     if o.get("type") == "SwitchContainer"]
 
     if not guids:
-        _alert("Auto-Assign", "No Switch Container GUID received.\n"
-               "Right-click a Switch Container and choose this command.", "warn")
+        _alert("Auto-Assign", "No Switch Container selected.", "warn")
         return
 
-    guid = guids[0]
+    # ── Process all selected containers ──────────────────────────────────────
+    plans  = []
+    errors = []
 
-    # ── Fetch Switch Container info + Switch Group reference ─────────────────
-    obj_result = call("ak.wwise.core.object.get", {
-        "from": {"id": [guid]},
-        "options": {"return": ["id", "name", "type", "@SwitchGroupOrStateGroup"]},
-    })
-    if not obj_result or not obj_result.get("return"):
-        _alert("Error", "Could not fetch object info from Wwise.", "error")
-        return
-
-    obj = obj_result["return"][0]
-    obj_name = obj.get("name", "?")
-    obj_type = obj.get("type", "")
-
-    if obj_type != "SwitchContainer":
-        _alert("Wrong Type",
-               f'"{obj_name}" is a {obj_type}, not a Switch Container.', "warn")
-        return
-
-    switch_group_ref = obj.get("@SwitchGroupOrStateGroup") or {}
-    if not switch_group_ref.get("id"):
-        _alert("No Switch Group",
-               f'"{obj_name}" has no Switch Group / State Group assigned.', "warn")
-        return
-
-    sg_id   = switch_group_ref["id"]
-    sg_name = switch_group_ref.get("name", "?")
-
-    # ── Get switches in the group ─────────────────────────────────────────────
-    switches = _get_children(call, sg_id)
-    if not switches:
-        _alert("Empty Group",
-               f'Switch Group "{sg_name}" has no child switches.', "warn")
-        return
-
-    # ── Get children of Switch Container ─────────────────────────────────────
-    children = _get_children(call, guid)
-    if not children:
-        _alert("No Children",
-               f'"{obj_name}" has no child objects to assign.', "warn")
-        return
-
-    # ── Compute matches ───────────────────────────────────────────────────────
-    assignments = []   # (child, switch_name) — to be applied
-    skipped     = []   # (child_name, reason)
-
-    for child in children:
-        match = _best_switch_for_child(child["name"], switches)
-        if match:
-            assignments.append((child, match))
+    for guid in guids:
+        result = _process_container(call, guid)
+        if result is None:
+            continue
+        if "error" in result:
+            errors.append(result["error"])
         else:
-            child_tokens = _tokens(child["name"])
-            matching_names = [sw["name"] for sw in switches
-                              if _tokens(sw["name"]).issubset(child_tokens)]
-            if len(matching_names) > 1:
-                skipped.append((child["name"],
-                                f"ambiguous ({', '.join(matching_names)})"))
-            else:
-                skipped.append((child["name"], "no match"))
+            plans.append(result)
 
-    # ── Preview & confirm ─────────────────────────────────────────────────────
+    if not plans:
+        msg = "No valid Switch Containers to process."
+        if errors:
+            msg += "\n\nSkipped:\n" + "\n".join(f"  • {e}" for e in errors)
+        _alert("Auto-Assign", msg, "warn")
+        return
+
+    # ── Build combined preview ────────────────────────────────────────────────
+    total_assign = sum(len(p["assignments"]) for p in plans)
+    total_skip   = sum(len(p["skipped"])     for p in plans)
+
     preview_lines = [
-        f'Switch Container:  "{obj_name}"',
-        f'Switch Group:      "{sg_name}"',
-        f'Switches: {len(switches)}   Children: {len(children)}',
+        f"{len(plans)} Switch Container(s) selected",
+        f"Total: {total_assign} will be assigned, {total_skip} skipped",
         "",
     ]
-    if assignments:
-        preview_lines.append(f"Will assign ({len(assignments)}):")
-        for child, (_, sw_name) in assignments:
-            preview_lines.append(f"  {child['name']}  →  {sw_name}")
-    if skipped:
-        if assignments:
-            preview_lines.append("")
-        preview_lines.append(f"Will skip ({len(skipped)}):")
-        for name, reason in skipped:
-            preview_lines.append(f"  {name}  ({reason})")
-    if not assignments:
-        preview_lines.append("No assignments would be made.")
 
-    preview_lines.append("\nProceed?")
+    for p in plans:
+        preview_lines.append(f'[ {p["name"]} ]  (Switch Group: {p["sg_name"]})')
+        if p["assignments"]:
+            for child, (_, sw_name) in p["assignments"]:
+                preview_lines.append(f"    {child['name']}  →  {sw_name}")
+        if p["skipped"]:
+            for name, reason in p["skipped"]:
+                preview_lines.append(f"    {name}  (skip: {reason})")
+        preview_lines.append("")
+
+    if errors:
+        preview_lines.append("Skipped containers:")
+        for e in errors:
+            preview_lines.append(f"  • {e}")
+        preview_lines.append("")
+
+    preview_lines.append("Proceed?")
 
     confirmed = _alert("Auto-Assign Preview", "\n".join(preview_lines), "yesno")
     if not confirmed:
         return
 
-    # ── Clear existing assignments ────────────────────────────────────────────
-    existing = call("ak.wwise.core.switchContainer.getAssignments", {"id": guid})
-    for asgn in (existing or {}).get("return", []):
-        call("ak.wwise.core.switchContainer.removeAssignment", {
-            "child":         asgn["child"],
-            "stateOrSwitch": asgn["stateOrSwitch"],
-        })
+    # ── Apply assignments for all containers ──────────────────────────────────
+    ok_total   = 0
+    fail_total = 0
+    result_lines = []
 
-    # ── Apply new assignments ─────────────────────────────────────────────────
-    ok_list   = []
-    fail_list = []
+    for p in plans:
+        # Clear existing assignments
+        existing = call("ak.wwise.core.switchContainer.getAssignments", {"id": p["guid"]})
+        for asgn in (existing or {}).get("return", []):
+            call("ak.wwise.core.switchContainer.removeAssignment", {
+                "child":         asgn["child"],
+                "stateOrSwitch": asgn["stateOrSwitch"],
+            })
 
-    for child, (sw_guid, sw_name) in assignments:
-        result = call("ak.wwise.core.switchContainer.addAssignment", {
-            "child":         child["id"],
-            "stateOrSwitch": sw_guid,
-        })
-        if result is not None:
-            ok_list.append(f"  {child['name']}  →  {sw_name}")
-        else:
-            fail_list.append(f"  {child['name']}  →  {sw_name}  (FAILED)")
+        # Apply new assignments
+        ok_list   = []
+        fail_list = []
+        for child, (sw_guid, sw_name) in p["assignments"]:
+            r = call("ak.wwise.core.switchContainer.addAssignment", {
+                "child":         child["id"],
+                "stateOrSwitch": sw_guid,
+            })
+            if r is not None:
+                ok_list.append(f"    {child['name']}  →  {sw_name}")
+            else:
+                fail_list.append(f"    {child['name']}  →  {sw_name}  (FAILED)")
 
-    # ── Result ────────────────────────────────────────────────────────────────
-    result_lines = [
-        f'"{obj_name}" — Auto-Assign complete',
-        "",
-    ]
-    if ok_list:
-        result_lines.append(f"Assigned ({len(ok_list)}):")
+        ok_total   += len(ok_list)
+        fail_total += len(fail_list)
+
+        result_lines.append(f'[ {p["name"]} ]')
         result_lines.extend(ok_list)
-    if fail_list:
-        if ok_list:
-            result_lines.append("")
-        result_lines.append(f"Failed ({len(fail_list)}):")
         result_lines.extend(fail_list)
-    if skipped:
+        if p["skipped"]:
+            for name, reason in p["skipped"]:
+                result_lines.append(f"    {name}  (skip: {reason})")
         result_lines.append("")
-        result_lines.append(f"Skipped ({len(skipped)}):")
-        for name, reason in skipped:
-            result_lines.append(f"  {name}  ({reason})")
 
-    kind = "info" if not fail_list else "warn"
-    _alert("Auto-Assign Result", "\n".join(result_lines), kind)
+    summary = f"Done — {ok_total} assigned, {fail_total} failed, {total_skip} skipped"
+    kind = "info" if not fail_total else "warn"
+    _alert("Auto-Assign Result", summary + "\n\n" + "\n".join(result_lines), kind)
 
 
 if __name__ == "__main__":
