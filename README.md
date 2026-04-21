@@ -17,7 +17,7 @@ When multiple switches match the same child, the most specific one (most tokens)
 ## Requirements
 
 - Wwise 2025.x with WAAPI enabled
-- Python 3.11 at `C:\Python311\python.exe`
+- Python 3.10+ in system PATH
 - [`sk-wwise-mcp`](https://github.com/sokolkreshnik/sk-wwise-mcp) installed at `~/sk-wwise-mcp` (requires Wwise 2025.x)
 
 ## Setup
@@ -26,21 +26,37 @@ When multiple switches match the same child, the most specific one (most tokens)
 
 **Wwise Launcher → Wwise → Settings → Enable Wwise Authoring API**
 
-### 2. Register the right-click command
+This is a one-time setting.
 
-Run `register.bat` (or `python register.py`) while Wwise is open.  
-This registers `Auto-Assign Switches by Name` as a Wwise command.
+### 2. Copy files to Wwise Add-ons
 
-> Re-run after every Wwise restart — command registration is session-only.
+Copy the entire `WwiseSwitchAutoAssign` folder anywhere on your machine, then add the following entry to:
+
+```
+%APPDATA%\Audiokinetic\Wwise\Add-ons\Commands\commands.json
+```
+
+```json
+{
+    "id": "WwiseSwitchAutoAssign.AutoAssignByName",
+    "displayName": "Auto-Assign Switches by Name",
+    "program": "C:\\path\\to\\WwiseSwitchAutoAssign\\run.bat",
+    "args": "{objects}"
+}
+```
+
+Replace `C:\\path\\to\\` with the actual folder path. After this, the command is registered automatically every time Wwise starts — no manual re-registration needed.
 
 ### 3. Assign a keyboard shortcut
 
 In Wwise: **Edit → Keyboard Shortcuts** → search `AutoAssign` → assign your preferred shortcut (e.g. `Ctrl+Shift+A`).
 
+This is a one-time setting. The shortcut persists across Wwise restarts.
+
 ## Usage
 
 1. Select one or more Switch Containers in Wwise
-2. Press your assigned shortcut (or invoke the command from Keyboard Shortcuts)
+2. Press the assigned shortcut
 3. Review the combined assignment preview in the dialog
 4. Click **Yes** to apply all at once
 
@@ -53,10 +69,8 @@ In Wwise: **Edit → Keyboard Shortcuts** → search `AutoAssign` → assign you
 
 | File | Description |
 |------|-------------|
-| `register.py` | Registers the Wwise command via WAAPI |
-| `register.bat` | Double-click shortcut to run `register.py` |
 | `auto_assign.py` | Worker — called by Wwise when the command is triggered |
-| `debug_register.py` | Diagnostic tool for troubleshooting registration |
+| `run.bat` | Launcher — invokes `auto_assign.py` via Python |
 
 ---
 
@@ -83,7 +97,7 @@ Switch 이름과 자식 오브젝트 이름을 각각 `_`로 분리해 토큰화
 ### 요구 사항
 
 - Wwise 2025.x (WAAPI 활성화 필요)
-- Python 3.11 (`C:\Python311\python.exe`)
+- Python 3.10 이상 (시스템 PATH에 등록되어 있어야 함)
 - [`sk-wwise-mcp`](https://github.com/sokolkreshnik/sk-wwise-mcp) (`~/sk-wwise-mcp` 경로에 설치, Wwise 2025.x 전용)
 
 ### 설치 방법
@@ -92,16 +106,34 @@ Switch 이름과 자식 오브젝트 이름을 각각 `_`로 분리해 토큰화
 
 **Wwise Launcher → Wwise → Settings → Enable Wwise Authoring API**
 
-#### 2. 커맨드 등록
+최초 1회만 설정하면 됩니다.
 
-Wwise가 열려있는 상태에서 `register.bat` 더블클릭 (또는 `python register.py` 실행).  
-Wwise에 `Auto-Assign Switches by Name` 커맨드가 등록됩니다.
+#### 2. Wwise Add-ons에 커맨드 등록
 
-> Wwise를 재시작할 때마다 다시 실행해야 합니다 (커맨드 등록은 세션 단위).
+`WwiseSwitchAutoAssign` 폴더를 원하는 경로에 저장한 뒤, 아래 파일을 편집합니다:
+
+```
+%APPDATA%\Audiokinetic\Wwise\Add-ons\Commands\commands.json
+```
+
+`commands` 배열에 아래 항목을 추가합니다:
+
+```json
+{
+    "id": "WwiseSwitchAutoAssign.AutoAssignByName",
+    "displayName": "Auto-Assign Switches by Name",
+    "program": "C:\\실제\\폴더\\경로\\WwiseSwitchAutoAssign\\run.bat",
+    "args": "{objects}"
+}
+```
+
+`program` 경로를 실제 폴더 위치에 맞게 수정해주세요. 이후 Wwise를 시작할 때마다 커맨드가 자동으로 등록됩니다. 별도의 재등록 작업이 필요 없습니다.
 
 #### 3. 키보드 단축키 지정
 
 Wwise: **Edit → Keyboard Shortcuts** → `AutoAssign` 검색 → 원하는 단축키 지정 (예: `Ctrl+Shift+A`)
+
+최초 1회만 설정하면 Wwise 재시작 후에도 단축키가 유지됩니다.
 
 ### 사용 방법
 
@@ -119,7 +151,5 @@ Wwise: **Edit → Keyboard Shortcuts** → `AutoAssign` 검색 → 원하는 단
 
 | 파일 | 설명 |
 |------|------|
-| `register.py` | WAAPI로 Wwise 커맨드 등록 |
-| `register.bat` | `register.py`를 더블클릭으로 실행하는 배치 파일 |
 | `auto_assign.py` | 커맨드 실행 시 Wwise가 호출하는 워커 스크립트 |
-| `debug_register.py` | 등록 문제 진단용 디버그 도구 |
+| `run.bat` | `auto_assign.py`를 Python으로 실행하는 런처 |
