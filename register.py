@@ -16,7 +16,7 @@ from pathlib import Path
 _SK_WWISE_MCP    = Path.home() / "sk-wwise-mcp"
 _WAAPI_UTIL_PATH = _SK_WWISE_MCP / "core" / "waapi_util.py"
 
-PYTHON_PATH  = r"C:\Python311\python.exe"
+PYTHON_PATH   = sys.executable  # automatically uses whichever Python is running this script
 WORKER_SCRIPT = str(Path(__file__).parent / "auto_assign.py")
 COMMAND_ID   = "WwiseSwitchAutoAssign.AutoAssignByName"
 DISPLAY_NAME = "Auto-Assign Switches by Name"
